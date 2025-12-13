@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Government System{% endblock %}
+
+{% block extra_css %}
+<style>
+    .welcome-banner {
+        background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .welcome-banner h1 {
+        margin: 0;
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+    
+    .user-info {
+        margin-top: 1rem;
+        font-size: 1.1rem;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 10px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #1a237e;
+    }
+    
+    .stat-card h3 {
+        color: #666;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 0 0 0.5rem 0;
+    }
+    
+    .stat-card .value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #1a237e;
+        margin: 0;
+    }
+    
+    .actions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+    }
+    
+    .feature-card {
+        background: white;
+        border-radius: 10px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid #e0e0e0;
+    }
+    
+    .feature-card h3 {
+        color: #1a237e;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .feature-card button {
+        background: #1a237e;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-top: 1rem;
+        width: 100%;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+    
+    .clearance-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: bold;
+        margin-left: 0.5rem;
+    }
+    
+    .clearance-basic { background: #4caf50; color: white; }
+    .clearance-confidential { background: #ff9800; color: white; }
+    .clearance-secret { background: #f44336; color: white; }
+    .clearance-top-secret { background: #9c27b0; color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="dashboardContent" class="loading">
+    Loading dashboard...
+</div>
+
+<script>
+async function loadDashboard() {
+    try {
+        const token = localStorage.getItem('access_token');
+        
+        if (!token) {
+            window.location.href = '/';
+            return;
+        }
+        
+        // Get user data from API
+        const response = await fetch('/dashboard', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.status === 401) {
+            // Try to refresh token
+            const refreshed = await refreshToken();
+            if (refreshed) {
+                return loadDashboard(); // Retry
+            } else {
+                window.location.href = '/';
+                return;
+            }
+        }
+        
+        if (!response.ok) {
+            throw new Error('Failed to load dashboard');
+        }
+        
+        const data = await response.json();
+        const user = data.user;
+        
+        // Get clearance badge class
+        let clearanceClass = 'clearance-basic';
+        switch(user.clearance_level) {
+            case 'CONFIDENTIAL': clearanceClass = 'clearance-confidential'; break;
+            case 'SECRET': clearanceClass = 'clearance-secret'; break;
+            case 'TOP_SECRET': clearanceClass = 'clearance-top-secret'; break;
+        }
+        
+        // Render dashboard content
+        document.getElementById('dashboardContent').innerHTML = `
+            <div class="welcome-banner">
+                <h1>Welcome, ${user.username}!</h1>
+                <div class="user-info">
+                    <div>Role: <strong>${user.user_class}</strong></div>
+                    <div>Facility: <strong>${user.facility}</strong></div>
+                    <div>Department: <strong>${user.department}</strong></div>
+                    <div>Clearance: 
+                        <span class="clearance-badge ${clearanceClass}">
+                            ${user.clearance_level}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Your Role</h3>
+                    <p class="value">${user.user_class}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Facility</h3>
+                    <p class="value">${user.facility}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Department</h3>
+                    <p class="value">${user.department}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Clearance</h3>
+                    <p class="value">${user.clearance_level}</p>
+                </div>
+            </div>
+            
+            <div class="actions-grid">
+                <div class="feature-card">
+                    <h3>📄 Documents</h3>
+                    <p>Access and manage government documents in your department.</p>
+                    <button onclick="viewDocuments()">View Documents</button>
+                </div>
+                
+                ${user.user_class === 'admin' || user.user_class === 'superadmin' ? `
+                <div class="feature-card">
+                    <h3>👥 User Management</h3>
+                    <p>Manage system users and permissions in your facility.</p>
+                    <button onclick="manageUsers()">Manage Users</button>
+                </div>
+                ` : ''}
+                
+                <div class="feature-card">
+                    <h3>⚙️ Profile</h3>
+                    <p>View and update your profile information.</p>
+                    <button onclick="viewProfile()">My Profile</button>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        document.getElementById('dashboardContent').innerHTML = `
+            <div class="alert alert-error">
+                <h3>Error Loading Dashboard</h3>
+                <p>${error.message}</p>
+                <button onclick="window.location.href='/'">Back to Login</button>
+            </div>
+        `;
+    }
+}
+
+// Action functions
+function viewDocuments() {
+    // Implement document viewing
+    alert('Document management will be implemented in the next phase.\n\nThis will show all documents in your department with OPA policy evaluation.');
+}
+
+function manageUsers() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/';
+        return;
+    }
+    
+    // Check if user is admin by calling API
+    fetch('/api/users', {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    })
+    .then(response => {
+        if (response.status === 403) {
+            alert('Access Denied: Admin privileges required');
+        } else if (response.ok) {
+            alert('User management module will open soon.\n\nThis feature allows admins to manage users in their facility.');
+        } else {
+            alert('Error checking permissions');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Network error');
+    });
+}
+
+function viewProfile() {
+    alert('Profile management coming soon!\n\nYou will be able to update your information and change password.');
+}
+
+// Refresh token function
+async function refreshToken() {
+    const refreshToken = localStorage.getItem('refresh_token');
+    
+    if (!refreshToken) {
+        return false;
+    }
+    
+    try {
+        const response = await fetch('/refresh', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${refreshToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            localStorage.setItem('access_token', data.access_token);
+            return true;
+        } else {
+            return false;
+        }
+    } catch (error) {
+        console.error('Token refresh failed:', error);
+        return false;
+    }
+}
+
+// Load dashboard when page loads
+document.addEventListener('DOMContentLoaded', loadDashboard);
+</script>
+{% endblock %}
