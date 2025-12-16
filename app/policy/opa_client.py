@@ -4,6 +4,7 @@ Open Policy Agent (OPA) Client for ZTA System
 
 import requests
 import json
+import uuid
 from flask import current_app, request
 from datetime import datetime
 from app.logs.request_logger import log_request
@@ -187,6 +188,51 @@ class OPAClient:
         }
 
         return self.evaluate_policy(input_data, policy_path="zta/user_management")
+
+    def build_zta_input(user, resource, action, request, auth_method="JWT"):
+        """Build OPA input with ZTA authentication data"""
+
+        # Extract certificate info if present
+        certificate_info = None
+        if hasattr(request, "client_certificate"):
+            cert_info = request.client_certificate
+            certificate_info = {
+                "subject": cert_info.get("subject", {}),
+                "issuer": cert_info.get("issuer", {}),
+                "fingerprint": cert_info.get("fingerprint"),
+                "not_valid_before": cert_info.get("not_valid_before"),
+                "not_valid_after": cert_info.get("not_valid_after"),
+                "keyUsage": {"clientAuth": True},
+            }
+
+        # Determine authentication method
+        if auth_method == "mTLS_JWT":
+            auth_strength = "mTLS_JWT"
+        elif auth_method == "mTLS_service":
+            auth_strength = "mTLS_service"
+        else:
+            auth_strength = "JWT"
+
+        return {
+            "input": {
+                "user": user.to_dict() if user else None,
+                "resource": resource,
+                "action": action,
+                "environment": {
+                    "time": {
+                        "hour": datetime.now().hour,
+                        "weekend": datetime.now().weekday() >= 5,
+                    },
+                    "ip": request.remote_addr,
+                },
+                "authentication": {
+                    "method": auth_strength,
+                    "certificate": certificate_info,
+                    "jwt_valid": auth_method in ["JWT", "mTLS_JWT"],
+                },
+                "request_id": request.headers.get("X-Request-ID", str(uuid.uuid4())),
+            }
+        }
 
 
 # Create instance but don't initialize with config yet
